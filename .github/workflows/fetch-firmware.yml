@@ -1,0 +1,118 @@
+name: Universal Firmware Fetcher
+
+on:
+  workflow_dispatch:
+    inputs:
+      manufacturer:
+        description: "Manufacturer"
+        type: choice
+        required: true
+        options:
+          - Samsung
+          - Vivo / iQOO
+          - OPPO
+          - OnePlus
+          - Honor
+          - Xiaomi / POCO / Redmi
+          - TECNO
+          - Infinix
+          - Motorola
+          - Meizu
+          - Fairphone
+          - Huawei
+          - Realme
+          - Google Pixel
+          - Nothing
+          - ZTE
+          - Nubia
+          - RedMagic
+          - itel
+          - LG
+      device:
+        description: "Device model (Samsung model number or Pixel codename)"
+        type: string
+        required: true
+      build_number:
+        description: "Build Number of the firmware"
+        type: string
+        required: true
+      region:
+        description: "CSC / region / channel (for example INS, BTU, EEA)"
+        type: string
+        required: false
+        default: ""
+      convert_gsi:
+        description: "Convert into GSI?"
+        type: choice
+        required: true
+        options:
+          - "N - No"
+          - "Y - Yes"
+        default: "N - No"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    name: Fetch original firmware
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full unzip zip
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Download firmware
+        env:
+          MANUFACTURER: ${{ inputs.manufacturer }}
+          DEVICE: ${{ inputs.device }}
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          REGION: ${{ inputs.region }}
+        run: |
+          python -m uffetch download \
+            --manufacturer "$MANUFACTURER" \
+            --device "$DEVICE" \
+            --build "$BUILD_NUMBER" \
+            --region "$REGION" \
+            --output firmware
+
+      - name: Extract GSI candidate (optional)
+        if: inputs.convert_gsi == 'Y - Yes'
+        run: |
+          chmod +x scripts/prepare-gsi-candidate.sh
+          scripts/prepare-gsi-candidate.sh firmware gsi-candidate
+
+      - name: Upload original firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-firmware-${{ inputs.manufacturer }}-${{ inputs.device }}-${{ inputs.build_number }}
+          path: firmware/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Upload GSI candidate
+        if: inputs.convert_gsi == 'Y - Yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gsi-candidate-${{ inputs.device }}-${{ inputs.build_number }}
+          path: gsi-candidate/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
