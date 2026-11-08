@@ -1,0 +1,2 @@
+requests>=2.32.0
+samloader>=0.4.0
